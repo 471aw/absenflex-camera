@@ -19,6 +19,28 @@ function posePredicate(pose,baseYaw){if(pose==='RIGHT')return y=>(y-baseYaw)<-.1
 function poseLabel(pose){return {RIGHT:'Tengok ke KANAN Anda',LEFT:'Tengok ke KIRI Anda',STRAIGHT:'Tetap lihat LURUS'}[pose]||'Ikuti instruksi';}
 async function enroll(){sub.textContent='Pendaftaran Face ID: lurus, kanan, lalu kiri. Tidak menggunakan kedipan.';const a=await stableCapture(y=>Math.abs(y)<.18,'1/3 • Lihat LURUS ke kamera');progress(42);await sleep(550);const b=await stableCapture(y=>(y-a.yaw)<-.10,'2/3 • Tengok ke KANAN Anda');progress(70);await sleep(550);const c=await stableCapture(y=>(y-a.yaw)>.10,'3/3 • Tengok ke KIRI Anda');progress(100);setBadge('Face ID siap disimpan','ok');send(true,{descriptors:[a.descriptor,b.descriptor,c.descriptor],photos:[a.photo,b.photo,c.photo],liveness:{method:'POSE_ENROLL',initialStraight:true,right:true,left:true,straightYaw:a.yaw,rightYaw:b.yaw,leftYaw:c.yaw,capturedAt:new Date().toISOString()}})}
 async function attendance(){if(!['RIGHT','LEFT','STRAIGHT'].includes(CHALLENGE_POSE))throw new Error('Challenge wajah tidak valid.');sub.textContent='Tahap 1: wajah lurus. Tahap 2 akan mengikuti instruksi acak.';const a=await stableCapture(y=>Math.abs(y)<.18,'1/2 • Lihat LURUS ke kamera');progress(48);setBadge('Tahap pertama berhasil','ok');await sleep(CHALLENGE_POSE==='STRAIGHT'?1200:650);sub.textContent='Tahap 2: '+poseLabel(CHALLENGE_POSE)+'.';const b=await stableCapture(posePredicate(CHALLENGE_POSE,a.yaw),'2/2 • '+poseLabel(CHALLENGE_POSE),18000,CHALLENGE_POSE==='STRAIGHT'?5:3);progress(78);setBadge('Mengambil GPS…');const location=await gps();progress(100);setBadge('Verifikasi selesai','ok');send(true,{descriptor:a.descriptor,challengeDescriptor:b.descriptor,photo:a.photo,liveness:{method:'STRAIGHT_THEN_RANDOM_POSE',initialStraight:true,challengePassed:true,challengePose:CHALLENGE_POSE,straightYaw:a.yaw,challengeYaw:b.yaw,capturedAt:new Date().toISOString()},location})}
-async function init(){try{if(!window.opener)throw new Error('Halaman kamera harus dibuka dari aplikasi '+APP_NAME+'.');if(!window.isSecureContext)throw new Error('Kamera memerlukan HTTPS.');await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(MODEL),faceapi.nets.faceLandmark68Net.loadFromUri(MODEL),faceapi.nets.faceRecognitionNet.loadFromUri(MODEL)]);progress(12);stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640},height:{ideal:800}}});video.srcObject=stream;await video.play();sub.textContent='Model wajah siap. Ikuti instruksi di layar.';progress(20);if(MODE==='enroll')await enroll();else await attendance()}catch(e){fail(e)}}
+
+function chromeMobileGate(){
+  const ua=String(navigator.userAgent||'');
+  const uaData=navigator.userAgentData||null;
+  const isIOS=/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints>1);
+  const isAndroid=/Android/i.test(ua);
+  const iosChrome=isIOS && /CriOS\/\d+/i.test(ua) && !/(FxiOS|EdgiOS|OPiOS|DuckDuckGo)/i.test(ua);
+  let androidChrome=false;
+  if(isAndroid){
+    const obviousOther=/(EdgA|OPR\/|Opera|SamsungBrowser|UCBrowser|YaBrowser|Firefox|DuckDuckGo)/i.test(ua);
+    if(!obviousOther && /Chrome\/\d+/i.test(ua)){
+      androidChrome=true;
+      if(uaData && Array.isArray(uaData.brands)){
+        const brands=uaData.brands.map(x=>String(x.brand||'').toLowerCase());
+        if(brands.length && !brands.some(x=>x==='google chrome')) androidChrome=false;
+        if(brands.some(x=>/(edge|opera|brave|samsung)/i.test(x))) androidChrome=false;
+      }
+      if(navigator.brave) androidChrome=false;
+    }
+  }
+  return iosChrome || androidChrome;
+}
+async function init(){try{if(!chromeMobileGate())throw new Error('Gunakan Google Chrome pada Android atau iPhone. Browser lain diblokir.');if(!window.opener)throw new Error('Halaman kamera harus dibuka dari aplikasi '+APP_NAME+'.');if(!window.isSecureContext)throw new Error('Kamera memerlukan HTTPS.');await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(MODEL),faceapi.nets.faceLandmark68Net.loadFromUri(MODEL),faceapi.nets.faceRecognitionNet.loadFromUri(MODEL)]);progress(12);stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640},height:{ideal:800}}});video.srcObject=stream;await video.play();sub.textContent='Model wajah siap. Ikuti instruksi di layar.';progress(20);if(MODE==='enroll')await enroll();else await attendance()}catch(e){fail(e)}}
 window.addEventListener('beforeunload',()=>{try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}});init();
 </script></body></html>
